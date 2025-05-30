@@ -10,6 +10,7 @@ from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
 import os
 from datetime import datetime
+from rest_framework.views import APIView
 
 
 # Generics
@@ -113,6 +114,45 @@ class FarmerViewSet(viewsets.ModelViewSet):
 
         return queryset
 
+    def create(self, request, *args, **kwargs):
+        print("Incoming data for create:", request.data)  # Log incoming data
+        response = super().create(request, *args, **kwargs)
+        print("Response data for create:", response.data)  # Log response data
+        return response
+
+    def update(self, request, *args, **kwargs):
+        # Ensure 'id' is not part of the request data for updates
+        if 'id' in request.data:
+            print(f"Warning: 'id' field found in update request data for ID {kwargs.get('id')}. Removing it.")
+            # Create a mutable copy if QueryDict
+            if hasattr(request.data, '_mutable'):
+                request.data._mutable = True
+                request.data.pop('id', None)
+                request.data._mutable = False
+            elif isinstance(request.data, dict):
+                 request.data.pop('id', None)
+
+        print(f"Incoming data for update (ID: {kwargs.get('id')}):", request.data)
+        response = super().update(request, *args, **kwargs)
+        print(f"Response data for update (ID: {kwargs.get('id')}):", response.data)
+        return response
+
+    def partial_update(self, request, *args, **kwargs):
+        # Ensure 'id' is not part of the request data for partial updates
+        if 'id' in request.data:
+            print(f"Warning: 'id' field found in partial_update request data for ID {kwargs.get('id')}. Removing it.")
+            if hasattr(request.data, '_mutable'):
+                request.data._mutable = True
+                request.data.pop('id', None)
+                request.data._mutable = False
+            elif isinstance(request.data, dict):
+                request.data.pop('id', None)
+
+        print(f"Incoming data for partial_update (ID: {kwargs.get('id')}):", request.data)
+        response = super().partial_update(request, *args, **kwargs)
+        print(f"Response data for partial_update (ID: {kwargs.get('id')}):", response.data)
+        return response
+
 
 class FarmerMediaUploadView(viewsets.ViewSet):
     """
@@ -175,77 +215,20 @@ class FarmerMediaUploadView(viewsets.ViewSet):
 
 class FarmerEmissionsView(viewsets.ViewSet):
     """
-    ViewSet for calculating and retrieving farmer emissions data.
+    ViewSet for retrieving farmer emissions data.
     """
     def retrieve(self, request, farmer_id=None):
         """
-        Calculate and return emissions data for a specific farmer.
+        Retrieve emissions data for a specific farmer.
         """
         farmer = get_object_or_404(Farmer, id=farmer_id)
-        
-        # Calculate fertilizer emissions (kg CO2e)
-        fertilizer_emissions = 0.0
-        if farmer.fertilizer_type and farmer.application_rate:
-            # Conversion factors for different fertilizer types
-            fertilizer_factors = {
-                'NPK': 4.5,  # kg CO2e per kg of NPK
-                'Urea': 2.1,  # kg CO2e per kg of Urea
-                'DAP': 1.2,  # kg CO2e per kg of DAP
-                'MOP': 0.6,  # kg CO2e per kg of MOP
-            }
-            factor = fertilizer_factors.get(farmer.fertilizer_type, 2.0)  # default factor
-            fertilizer_emissions = float(farmer.application_rate) * factor
-
-        # Calculate pesticide emissions (kg CO2e)
-        pesticide_emissions = 0.0
-        if farmer.pesticide_category and farmer.pesticide_application_rate:
-            # Conversion factors for different pesticide categories
-            pesticide_factors = {
-                'Insecticide': 5.2,  # kg CO2e per kg of insecticide
-                'Fungicide': 3.8,    # kg CO2e per kg of fungicide
-                'Herbicide': 4.1,    # kg CO2e per kg of herbicide
-            }
-            factor = pesticide_factors.get(farmer.pesticide_category, 4.0)  # default factor
-            pesticide_emissions = float(farmer.pesticide_application_rate) * factor
-
-        # Calculate energy emissions (kg CO2e)
-        energy_emissions = 0.0
-        if farmer.energy_used and farmer.energy_category:
-            # Conversion factors for different energy sources
-            energy_factors = {
-                'Electricity': 0.82,  # kg CO2e per kWh
-                'Diesel': 2.68,       # kg CO2e per liter
-                'Petrol': 2.31,       # kg CO2e per liter
-            }
-            factor = energy_factors.get(farmer.energy_category, 1.0)  # default factor
-            energy_emissions = float(farmer.energy_used) * factor
-
-        # Calculate irrigation emissions (kg CO2e)
-        irrigation_emissions = 0.0
-        if farmer.power_consumption and farmer.power_source:
-            # Conversion factors for different power sources
-            power_factors = {
-                'Electric': 0.82,  # kg CO2e per kWh
-                'Diesel': 2.68,    # kg CO2e per liter
-                'Solar': 0.0,      # kg CO2e per kWh (renewable)
-            }
-            factor = power_factors.get(farmer.power_source, 1.0)  # default factor
-            irrigation_emissions = float(farmer.power_consumption) * factor
-
-        # Calculate total emissions
-        total_emissions = (
-            fertilizer_emissions +
-            pesticide_emissions +
-            energy_emissions +
-            irrigation_emissions
-        )
 
         emissions_data = {
-            'fertilizer_co2_emissions': round(fertilizer_emissions, 2),
-            'pesticide_co2_emissions': round(pesticide_emissions, 2),
-            'energy_co2_emissions': round(energy_emissions, 2),
-            'irrigation_co2_emissions': round(irrigation_emissions, 2),
-            'total_co2_emissions': round(total_emissions, 2),
+            'fertilizer_co2_emissions': str(farmer.fertilizer_co2_emissions),
+            'pesticide_co2_emissions': str(farmer.pesticide_co2_emissions),
+            'energy_co2_emissions': str(farmer.energy_co2_emissions),
+            'irrigation_co2_emissions': str(farmer.irrigation_co2_emissions),
+            'total_co2_emissions': str(farmer.total_co2_emissions),
             'farmer_id': str(farmer.id),
             'farmer_name': farmer.farmer_name,
             'calculation_date': datetime.now().isoformat(),
@@ -254,4 +237,57 @@ class FarmerEmissionsView(viewsets.ViewSet):
             'land_area_unit': 'acres'
         }
         
-        return Response(emissions_data) 
+        return Response(emissions_data)
+
+
+class FarmerSyncView(APIView):
+    def post(self, request):
+        try:
+            farmers_data = request.data
+            if not isinstance(farmers_data, list):
+                return Response({"error": "Expected a list of farmer objects"}, status=status.HTTP_400_BAD_REQUEST)
+
+            saved_farmers_data = []
+            error_details = []
+            success_count = 0
+            failure_count = 0
+
+            for farmer_item in farmers_data:
+                farmer_id = farmer_item.get('id')
+                if not farmer_id:
+                    error_details.append({"detail": "Missing 'id' in farmer data object.", "data": farmer_item})
+                    failure_count += 1
+                    continue
+
+                try:
+                    instance = Farmer.objects.get(id=farmer_id)
+                    serializer = FarmerSerializer(instance, data=farmer_item, partial=True) # partial=True for updates
+                except Farmer.DoesNotExist:
+                    serializer = FarmerSerializer(data=farmer_item)
+                
+                if serializer.is_valid():
+                    try:
+                        saved_farmer = serializer.save()
+                        saved_farmers_data.append(FarmerSerializer(saved_farmer).data) # Use fresh serializer for response data
+                        success_count += 1
+                    except Exception as e_save:
+                        error_details.append({"id": farmer_id, "errors": str(e_save)})
+                        failure_count += 1
+                else:
+                    error_details.append({"id": farmer_id, "errors": serializer.errors})
+                    failure_count += 1
+            
+            response_status = status.HTTP_207_MULTI_STATUS if failure_count > 0 and success_count > 0 else \
+                              status.HTTP_201_CREATED if success_count > 0 else \
+                              status.HTTP_400_BAD_REQUEST
+
+            return Response({
+                "message": f"{success_count} farmers synced successfully, {failure_count} failed.",
+                "saved_farmers": saved_farmers_data,
+                "errors": error_details if error_details else None
+            }, status=response_status)
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return Response({"error": str(e), "detail": "An unexpected error occurred during sync."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

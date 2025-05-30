@@ -20,24 +20,26 @@ from django.conf import settings
 from django.conf.urls.static import static
 from rest_framework.routers import DefaultRouter
 from users.views import UserViewSet
-from farmers.views import FarmerViewSet
+# FarmerViewSet will be handled by farmers.urls
+# from farmers.views import FarmerViewSet
 from companies.views import CompanyViewSet
 from farmer_mappings.views import FarmerMappingViewSet
 from volunteers.views import VolunteerViewSet
 
 router = DefaultRouter()
 router.register(r'users', UserViewSet)
-router.register(r'farmers', FarmerViewSet)
+# FarmerViewSet and other farmer-specific URLs are now in farmers.urls
+# router.register(r'farmers', FarmerViewSet)
 router.register(r'companies', CompanyViewSet)
 router.register(r'farmer-mappings', FarmerMappingViewSet)
 router.register(r'volunteers', VolunteerViewSet)
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('api/', include(router.urls)),
-    path('api-auth/', include('rest_framework.urls')),
-    # Add auth URLs
-    path('api/auth/', include('api.auth_urls')),
+    path('api/auth/', include('api.auth_urls')), # Auth URLs
+    path('api/farmers/', include('farmers.urls')), # Include farmer app URLs
+    path('api/', include(router.urls)), # General API routes from the main router (users, companies, etc.)
+    path('api-auth/', include('rest_framework.urls')), # DRF login/logout views
 ]
 
 # Serve media files in development

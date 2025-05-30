@@ -35,7 +35,7 @@ class Farmer(models.Model):
     ]
 
     # Primary and System Fields
-    id = models.CharField(max_length=36, primary_key=True)
+    id = models.CharField(max_length=36, primary_key=True, editable=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     sync_status = models.CharField(max_length=10, choices=SYNC_STATUS_CHOICES, default='pending')
